@@ -40,8 +40,10 @@
 
 
 -- Default set of latency buckets, 5ms to 10s:
-local DEFAULT_BUCKETS = {0.005, 0.01, 0.02, 0.03, 0.05, 0.075, 0.1, 0.2, 0.3,
-                         0.4, 0.5, 0.75, 1, 1.5, 2, 3, 4, 5, 10}
+local DEFAULT_BUCKETS = {
+  0.005, 0.01, 0.02, 0.03, 0.05, 0.075, 0.1, 0.2, 0.3,
+  0.4, 0.5, 0.75, 1, 1.5, 2, 3, 4, 5, 10
+}
 
 -- Metric is a "parent class" for all metrics.
 local Metric = {}
@@ -63,17 +65,17 @@ function Metric:check_labels(label_values)
   if self.label_names == nil and label_values == nil then
     return
   elseif self.label_names == nil and label_values ~= nil then
-    return "Expected no labels for " .. self.name .. ", got " ..  #label_values
+    return "Expected no labels for " .. self.name .. ", got " .. #label_values
   elseif label_values == nil and self.label_names ~= nil then
     return "Expected " .. #self.label_names .. " labels for " ..
-           self.name .. ", got none"
+            self.name .. ", got none"
   elseif #self.label_names ~= #label_values then
     return "Wrong number of labels for " .. self.name .. ". Expected " ..
-           #self.label_names .. ", got " .. #label_values
+            #self.label_names .. ", got " .. #label_values
   else
     for i, k in ipairs(self.label_names) do
       if label_values[i] == nil then
-        return "Unexpected nil value for label " .. k ..  " of " .. self.name
+        return "Unexpected nil value for label " .. k .. " of " .. self.name
       end
     end
   end
@@ -153,10 +155,7 @@ local function full_metric_name(name, label_names, label_values)
   end
   local label_parts = {}
   for idx, key in ipairs(label_names) do
-    local label_value = (string.format("%s", label_values[idx])
-      :gsub("\\", "\\\\")
-      :gsub("\n", "\\n")
-      :gsub('"', '\\"'))
+    local label_value = (string.format("%s", label_values[idx]):gsub("\\", "\\\\"):gsub("\n", "\\n"):gsub('"', '\\"'))
     table.insert(label_parts, key .. '="' .. label_value .. '"')
   end
   return name .. "{" .. table.concat(label_parts, ",") .. "}"
@@ -264,8 +263,7 @@ function Prometheus:log_error(...)
 end
 
 function Prometheus:log_error_kv(key, value, err)
-  self:log_error(
-    "Error while setting '", key, "' to '", value, "': '", err, "'")
+  self:log_error("Error while setting '", key, "' to '", value, "': '", err, "'")
 end
 
 -- Register a counter.
@@ -292,7 +290,7 @@ function Prometheus:counter(name, description, label_names)
   self.help[name] = description
   self.type[name] = "counter"
 
-  return Counter:new{name=name, label_names=label_names, prometheus=self}
+  return Counter:new { name = name, label_names = label_names, prometheus = self }
 end
 
 -- Register a gauge.
@@ -319,7 +317,7 @@ function Prometheus:gauge(name, description, label_names)
   self.help[name] = description
   self.type[name] = "gauge"
 
-  return Gauge:new{name=name, label_names=label_names, prometheus=self}
+  return Gauge:new { name = name, label_names = label_names, prometheus = self }
 end
 
 
@@ -347,7 +345,7 @@ function Prometheus:histogram(name, description, label_names, buckets)
     end
   end
 
-  for _, suffix in ipairs({"", "_bucket", "_count", "_sum"}) do
+  for _, suffix in ipairs({ "", "_bucket", "_count", "_sum" }) do
     if self.registered[name .. suffix] then
       self:log_error("Duplicate metric " .. name .. suffix)
       return
@@ -360,7 +358,7 @@ function Prometheus:histogram(name, description, label_names, buckets)
   self.buckets[name] = buckets or DEFAULT_BUCKETS
   self.bucket_format[name] = construct_bucket_format(self.buckets[name])
 
-  return Histogram:new{name=name, label_names=label_names, prometheus=self}
+  return Histogram:new { name = name, label_names = label_names, prometheus = self }
 end
 
 -- Set a given dictionary key.
