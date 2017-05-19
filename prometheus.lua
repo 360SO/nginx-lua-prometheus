@@ -45,6 +45,10 @@ local DEFAULT_BUCKETS = {
   0.4, 0.5, 0.75, 1, 1.5, 2, 3, 4, 5, 10
 }
 
+local app
+local COUNTER_LABELS = { "api", "module", "method", "code" }
+local HISTOGRAM_LABELS = { "app", "api", "module", "method" }
+
 -- Metric is a "parent class" for all metrics.
 local Metric = {}
 function Metric:new(o)
@@ -129,6 +133,7 @@ function Histogram:observe(value, label_values)
     self.prometheus:log_error("No value passed for " .. self.name)
     return
   end
+  table.insert(label_values, 1, app)
   local err = self:check_labels(label_values)
   if err ~= nil then
     self.prometheus:log_error(err)
@@ -158,6 +163,7 @@ local function full_metric_name(name, label_names, label_values)
     local label_value = (string.format("%s", label_values[idx]):gsub("\\", "\\\\"):gsub("\n", "\\n"):gsub('"', '\\"'))
     table.insert(label_parts, key .. '="' .. label_value .. '"')
   end
+  label_parts["app"] = app
   return name .. "{" .. table.concat(label_parts, ",") .. "}"
 end
 
@@ -176,6 +182,11 @@ end
 -- Returns:
 --   (string) a sprintf template.
 local function construct_bucket_format(buckets)
+  print("=====================")
+  for _, z in ipairs(buckets) do
+    print(z)
+  end
+  print("+++++++++++++++++++++")
   local max_order = 1
   local max_precision = 1
   for _, bucket in ipairs(buckets) do
@@ -236,15 +247,15 @@ end
 --
 -- Returns:
 --   an object that should be used to register metrics.
-function Prometheus.init(dict_name, prefix)
+function Prometheus.init(dict_name, app_name)
   local self = setmetatable({}, Prometheus)
   self.dict = ngx.shared[dict_name or "prometheus_metrics"]
   self.help = {}
-  if prefix then
-    self.prefix = prefix
-  else
-    self.prefix = ''
+  if not app_name or type(app_name) ~= "string" then
+    ngx.log(ngx.ERR, "app_name must be initialized and must be string, it stands for the app name")
+    return
   end
+  app = app_name
   self.type = {}
   self.registered = {}
   self.buckets = {}
@@ -276,7 +287,7 @@ end
 --
 -- Returns:
 --   a Counter object.
-function Prometheus:counter(name, description, label_names)
+function Prometheus:counter(name, description)
   if not self.initialized then
     ngx.log(ngx.ERR, "Prometheus module has not been initialized")
     return
@@ -290,7 +301,7 @@ function Prometheus:counter(name, description, label_names)
   self.help[name] = description
   self.type[name] = "counter"
 
-  return Counter:new { name = name, label_names = label_names, prometheus = self }
+  return Counter:new { name = name, label_names = COUNTER_LABELS, prometheus = self }
 end
 
 -- Register a gauge.
@@ -332,13 +343,13 @@ end
 --
 -- Returns:
 --   a Histogram object.
-function Prometheus:histogram(name, description, label_names, buckets)
+function Prometheus:histogram(name, description, buckets)
   if not self.initialized then
     ngx.log(ngx.ERR, "Prometheus module has not been initialized")
     return
   end
 
-  for _, label_name in ipairs(label_names or {}) do
+  for _, label_name in ipairs(HISTOGRAM_LABELS or {}) do
     if label_name == "le" then
       self:log_error("Invalid label name 'le' in " .. name)
       return
@@ -358,7 +369,7 @@ function Prometheus:histogram(name, description, label_names, buckets)
   self.buckets[name] = buckets or DEFAULT_BUCKETS
   self.bucket_format[name] = construct_bucket_format(self.buckets[name])
 
-  return Histogram:new { name = name, label_names = label_names, prometheus = self }
+  return Histogram:new { name = name, label_names = HISTOGRAM_LABELS, prometheus = self }
 end
 
 -- Set a given dictionary key.
@@ -471,15 +482,15 @@ function Prometheus:collect()
       local short_name = short_metric_name(key)
       if not seen_metrics[short_name] then
         if self.help[short_name] then
-          ngx.say("# HELP " .. self.prefix .. short_name .. " " .. self.help[short_name])
+          ngx.say("# HELP " .. short_name .. " " .. self.help[short_name])
         end
         if self.type[short_name] then
-          ngx.say("# TYPE " .. self.prefix .. short_name .. " " .. self.type[short_name])
+          ngx.say("# TYPE " .. short_name .. " " .. self.type[short_name])
         end
         seen_metrics[short_name] = true
       end
       -- Replace "Inf" with "+Inf" in each metric's last bucket 'le' label.
-      ngx.say(self.prefix .. key:gsub('le="Inf"', 'le="+Inf"'), " ", value)
+      ngx.say(key:gsub('le="Inf"', 'le="+Inf"'), " ", value)
     else
       self:log_error("Error getting '", key, "': ", err)
     end
