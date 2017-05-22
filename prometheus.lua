@@ -349,13 +349,6 @@ function Prometheus:histogram(name, description, buckets)
     return
   end
 
-  for _, label_name in ipairs(HISTOGRAM_LABELS or {}) do
-    if label_name == "le" then
-      self:log_error("Invalid label name 'le' in " .. name)
-      return
-    end
-  end
-
   for _, suffix in ipairs({ "", "_bucket", "_count", "_sum" }) do
     if self.registered[name .. suffix] then
       self:log_error("Duplicate metric " .. name .. suffix)
