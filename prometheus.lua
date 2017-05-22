@@ -163,7 +163,7 @@ local function full_metric_name(name, label_names, label_values)
     local label_value = (string.format("%s", label_values[idx]):gsub("\\", "\\\\"):gsub("\n", "\\n"):gsub('"', '\\"'))
     table.insert(label_parts, key .. '="' .. label_value .. '"')
   end
-  table.insert(label_parts, '"app"="' .. app .. '"')
+  table.insert(label_parts, 1, '"app"="' .. app .. '"')
   return name .. "{" .. table.concat(label_parts, ",") .. "}"
 end
 
