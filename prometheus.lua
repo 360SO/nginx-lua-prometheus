@@ -163,7 +163,7 @@ local function full_metric_name(name, label_names, label_values)
     local label_value = (string.format("%s", label_values[idx]):gsub("\\", "\\\\"):gsub("\n", "\\n"):gsub('"', '\\"'))
     table.insert(label_parts, key .. '="' .. label_value .. '"')
   end
-  label_parts["app"] = app
+  table.insert(label_parts, '"app"="' .. app .. '"')
   return name .. "{" .. table.concat(label_parts, ",") .. "}"
 end
 
@@ -182,11 +182,6 @@ end
 -- Returns:
 --   (string) a sprintf template.
 local function construct_bucket_format(buckets)
-  print("=====================")
-  for _, z in ipairs(buckets) do
-    print(z)
-  end
-  print("+++++++++++++++++++++")
   local max_order = 1
   local max_precision = 1
   for _, bucket in ipairs(buckets) do
