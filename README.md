@@ -7,6 +7,57 @@ This is a Lua library that can be used with Nginx to keep track of metrics and
 expose them on a separate web page to be pulled by
 [Prometheus](https://prometheus.io).
 
+## 使用 prometheus_wrapper.lua 快速接入
+
+#### nginx.conf
+
+```nginx
+server {
+    # 添加到业务的 server 配置中
+    log_by_lua_block {
+         require("prometheus.prometheus_wrapper"):log()
+    }
+}
+
+# 单独配置
+server {
+    listen 8001;
+    allow 10.0.0.0/8;
+    allow 172.0.0.0/8;
+    deny all;
+    default_type  text/plain;
+    location /metrics {
+        content_by_lua_block {
+            require("prometheus.prometheus_wrapper"):go()
+        }
+    }
+}
+```
+
+#### lua
+
+```lua
+-- 添加到 init_by_lua_* 相关代码中，初始化相关配置
+require("prometheus.prometheus_wrapper"):init({
+        app = "mbsug",
+        idc = QIHOO_IDC,
+        counter_path = { -- 添加 counter 统计的 path
+            "/idxdata/get",
+            "/idxdata/del",
+            "/status.html"
+            "..."
+        },
+        histogram_path = { -- 添加 histogram 统计的 path
+            "/idxdata/get"
+        },
+        log_method = { -- method 过滤
+            "GET",
+            "POST",
+            "HEAD"
+        },
+        buckets = {1,2,3,4,5,6,7,8,9,10,11,13,15,17,19,22,25,28,32,36,41,47,54,62,71,81,92,105,120,137,156,178,203,231,263,299,340,387,440,500} -- 桶距配置  
+```
+
 ## Quick start guide
 
 You would need to install nginx package with lua support (`nginx-extras` on
