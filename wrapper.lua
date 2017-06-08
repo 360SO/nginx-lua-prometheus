@@ -93,7 +93,7 @@ function _M:init(user_config)
     -- 状态
     metric_connections = prometheus:gauge(
         "module_connections",
-        "[" .. self.CONF.idc .. "] number of HTTP connections", 
+        "[" .. self.CONF.idc .. "] number of http connections", 
         {"app", "state"}
     )
 

@@ -15,7 +15,7 @@ expose them on a separate web page to be pulled by
 server {
     # 添加到业务的 server 配置中
     log_by_lua_block {
-         require("prometheus.prometheus_wrapper"):log()
+         require("prometheus.wrapper"):log()
     }
 }
 
@@ -28,7 +28,7 @@ server {
     default_type  text/plain;
     location /metrics {
         content_by_lua_block {
-            require("prometheus.prometheus_wrapper"):go()
+            require("prometheus.wrapper"):go()
         }
     }
 }
@@ -38,13 +38,13 @@ server {
 
 ```lua
 -- 添加到 init_by_lua_* 相关代码中，初始化相关配置
-require("prometheus.prometheus_wrapper"):init({
+require("prometheus.wrapper"):init({
         app = "mbsug",
         idc = QIHOO_IDC,
         counter_path = { -- 添加 counter 统计的 path
             "/idxdata/get",
             "/idxdata/del",
-            "/status.html"
+            "/status.html",
             "..."
         },
         histogram_path = { -- 添加 histogram 统计的 path
