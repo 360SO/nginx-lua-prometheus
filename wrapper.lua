@@ -75,10 +75,17 @@ function _M:init(user_config)
         {"app", "api", "module", "method", "code"}
     )
 
-    -- 流量
-    metric_traffic = prometheus:counter(
+    -- 流量 out
+    metric_traffic_out = prometheus:counter(
         "module_sent_bytes",
-        "[" .. self.CONF.idc .. "] traffic of /path",
+        "[" .. self.CONF.idc .. "] traffic out of /path",
+        {"app", "api", "module", "method", "code"}
+    )
+
+    -- 流量 in
+    metric_traffic_in = prometheus:counter(
+        "module_revd_bytes",
+        "[" .. self.CONF.idc .. "] traffic in of /path",
         {"app", "api", "module", "method", "code"}
     )
 
@@ -130,8 +137,10 @@ function _M:log()
 
     if (pathInCounter or pathInHistogram) and inTable(method, self.CONF.log_method) then
         if pathInCounter then
-            metric_requests:inc(1, {self.CONF.app, path, "self", method, status})
-            metric_traffic:inc(tonumber(ngx.var.bytes_sent), {self.CONF.app, path, "self", method, status})
+            local labels = {self.CONF.app, path, "self", method, status}
+            metric_requests:inc(1, labels)
+            metric_traffic_out:inc(tonumber(ngx.var.bytes_sent), labels)
+            metric_traffic_in:inc(tonumber(ngx.var.request_length), labels)
         end
 
         if pathInHistogram then
