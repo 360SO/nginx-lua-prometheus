@@ -9,7 +9,14 @@ _M.CONF = {
     counter_path = {},
     histogram_path = {},
     log_method = {},
-    buckets = {10,11,12,14,16,18,20,23,26,29,33,37,42,47,53,60,67,75,84,95,107,120,135,152,171,192,216,243,273,307,345,388,437,492,554,623,701,789,888,1000}
+    buckets = {10,11,12,14,16,18,20,23,26,29,33,37,42,47,53,60,67,75,84,95,107,120,135,152,171,192,216,243,273,307,345,388,437,492,554,623,701,789,888,1000},
+    switch = {
+        METRIC_COUNTER_RESPONSES = true,
+        METRIC_COUNTER_SENT_BYTES = true,
+        METRIC_HISTOGRAM_LATENCY = true,
+        METRIC_GAUGE_CONNECTS = true
+    },
+    merge_path = false
 }
 
 local function inTable(needle, table_name)
@@ -56,11 +63,21 @@ function _M:init(user_config)
                 return nil, '"buckets" must be a table'
             end
             self.CONF.buckets = v
+        elseif k == "switch" then
+            if type(v) ~= "table" then
+                return nil, '"switch" must be a table'
+            end
+            for i, j in pairs(v) do
+                if self.CONF.switch[i] then
+                    self.CONF.switch[i] = j
+                end
+            end
+        elseif k == "merge_path" then
+            if type(v) ~= "string" then
+                return nil, '"merge_path" must be a string'
+            end
+            self.CONF.merge_path = v
         end
-    end
-
-    if true then
-        self.CONF.initted = true
     end
 
     local config = ngx.shared.prometheus_metrics
@@ -69,40 +86,52 @@ function _M:init(user_config)
     prometheus = require("prometheus.prometheus").init("prometheus_metrics")
 
     -- QPS
-    metric_requests = prometheus:counter(
-        "module_responses", 
-        "[" .. self.CONF.idc .. "] number of /path", 
-        {"app", "api", "module", "method", "code"}
-    )
+    if self.CONF.switch.METRIC_COUNTER_RESPONSES then
+        metric_requests = prometheus:counter(
+            "module_responses", 
+            "[" .. self.CONF.idc .. "] number of /path", 
+            {"app", "api", "module", "method", "code"}
+        )
+    end
 
-    -- 流量 out
-    metric_traffic_out = prometheus:counter(
-        "module_sent_bytes",
-        "[" .. self.CONF.idc .. "] traffic out of /path",
-        {"app", "api", "module", "method", "code"}
-    )
+    if self.CONF.switch.METRIC_COUNTER_SENT_BYTES then
+        -- 流量 out
+        metric_traffic_out = prometheus:counter(
+            "module_sent_bytes",
+            "[" .. self.CONF.idc .. "] traffic out of /path",
+            {"app", "api", "module", "method", "code"}
+        )
 
-    -- 流量 in
-    metric_traffic_in = prometheus:counter(
-        "module_revd_bytes",
-        "[" .. self.CONF.idc .. "] traffic in of /path",
-        {"app", "api", "module", "method", "code"}
-    )
+        -- 流量 in
+        metric_traffic_in = prometheus:counter(
+            "module_revd_bytes",
+            "[" .. self.CONF.idc .. "] traffic in of /path",
+            {"app", "api", "module", "method", "code"}
+        )
+    end
 
     -- 延迟
-    metric_latency = prometheus:histogram(
-        "response_duration_milliseconds",
-        "[" .. self.CONF.idc .. "] http request latency", 
-        {"app", "api", "module", "method"},
-        self.CONF.buckets
-    )
+    if self.CONF.switch.METRIC_HISTOGRAM_LATENCY then
+        metric_latency = prometheus:histogram(
+            "response_duration_milliseconds",
+            "[" .. self.CONF.idc .. "] http request latency", 
+            {"app", "api", "module", "method"},
+            self.CONF.buckets
+        )
+    end
 
     -- 状态
-    metric_connections = prometheus:gauge(
-        "module_connections",
-        "[" .. self.CONF.idc .. "] number of http connections", 
-        {"app", "state"}
-    )
+    if self.CONF.switch.METRIC_GAUGE_CONNECTS then
+        metric_connections = prometheus:gauge(
+            "module_connections",
+            "[" .. self.CONF.idc .. "] number of http connections", 
+            {"app", "state"}
+        )
+    end
+
+    if true then
+        self.CONF.initted = true
+    end
 
     return self.CONF.initted
 end
@@ -138,14 +167,14 @@ function _M:log()
     if (pathInCounter or pathInHistogram) and inTable(method, self.CONF.log_method) then
         if pathInCounter then
             local labels = {self.CONF.app, path, "self", method, status}
-            metric_requests:inc(1, labels)
-            metric_traffic_out:inc(tonumber(ngx.var.bytes_sent), labels)
-            metric_traffic_in:inc(tonumber(ngx.var.request_length), labels)
+            if metric_requests then metric_requests:inc(1, labels) end
+            if metric_traffic_out then metric_traffic_out:inc(tonumber(ngx.var.bytes_sent), labels) end
+            if metric_traffic_in then metric_traffic_in:inc(tonumber(ngx.var.request_length), labels) end
         end
 
         if pathInHistogram then
             local tm = (ngx.now() - ngx.req.start_time()) * 1000
-            metric_latency:observe(tm, {self.CONF.app, path, "self", method})
+            if metric_latency then metric_latency:observe(tm, {self.CONF.app, path, "self", method}) end
         end
     end
 
@@ -178,6 +207,14 @@ function _M:metrics()
     end
     
     prometheus:collect()
+
+    -- 合并下游自定义统计项, merge_path 需跟 metrics 在同一个server下
+    if self.CONF.merge_path and type(self.CONF.merge_path) == "string" then
+        local res = ngx.location.capture(self.CONF.merge_path)
+        if res and res.status == 200 then
+            ngx.say(res.body)
+        end
+    end
 end
 
 return _M

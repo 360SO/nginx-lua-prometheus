@@ -12,6 +12,7 @@ expose them on a separate web page to be pulled by
 #### nginx.conf
 
 ```nginx
+lua_shared_dict prometheus_metrics 10m;
 server {
     # 添加到业务的 server 配置中
     log_by_lua_block {
@@ -56,6 +57,14 @@ require("prometheus.wrapper"):init({
             "HEAD"
         },
         buckets = {1,2,3,4,5,6,7,8,9,10,11,13,15,17,19,22,25,28,32,36,41,47,54,62,71,81,92,105,120,137,156,178,203,231,263,299,340,387,440,500} -- 桶距配置  
+        switch = {
+            METRIC_COUNTER_RESPONSES = true,
+            METRIC_COUNTER_SENT_BYTES = true,
+            METRIC_HISTOGRAM_LATENCY = true,
+            METRIC_GAUGE_CONNECTS = true
+        },
+        merge_path = "/metrics.php"
+    })
 ```
 
 ## Quick start guide
