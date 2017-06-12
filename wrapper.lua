@@ -1,6 +1,6 @@
 -- Copyright (C) by Jiang Yang (jiangyang-pd@360.cn)
 
-local _M = { _VERSION = "0.0.1" }
+local _M = { _VERSION = "0.0.2" }
 
 _M.CONF = {
     initted = false,
@@ -146,9 +146,6 @@ function _M:log()
     local request_uri = ngx.var.request_uri or ""
     local status = ngx.var.status or ""
 
-    local pathInCounter = false
-    local pathInHistogram = false
-
     if not request_uri or not method then
         return nil, "empty request_uri|method"
     end
@@ -161,8 +158,8 @@ function _M:log()
     end
 
     path = string.lower(path)
-    pathInCounter = inTable(path, self.CONF.counter_path)
-    pathInHistogram = inTable(path, self.CONF.histogram_path)
+    local pathInCounter = inTable(path, self.CONF.counter_path)
+    local pathInHistogram = inTable(path, self.CONF.histogram_path)
 
     if (pathInCounter or pathInHistogram) and inTable(method, self.CONF.log_method) then
         if pathInCounter then
