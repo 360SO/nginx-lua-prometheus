@@ -29,7 +29,7 @@ server {
     default_type  text/plain;
     location /metrics {
         content_by_lua_block {
-            require("prometheus.wrapper"):go()
+            require("prometheus.wrapper"):metrics()
         }
     }
 }

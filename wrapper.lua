@@ -200,7 +200,7 @@ function _M:metrics()
         ngx.exit(ngx.HTTP_OK)
     end
 
-    if ngx.var.connections_reading and ngx.var.connections_waiting and ngx.var.connections_writing then
+    if metric_connections and ngx.var.connections_reading and ngx.var.connections_waiting and ngx.var.connections_writing then
         metric_connections:set(ngx.var.connections_reading, {self.CONF.app, "reading"})
         metric_connections:set(ngx.var.connections_waiting, {self.CONF.app, "waiting"})
         metric_connections:set(ngx.var.connections_writing, {self.CONF.app, "writing"})
