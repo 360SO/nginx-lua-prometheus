@@ -1,21 +1,20 @@
 -- Copyright (C) by Jiang Yang (jiangyang-pd@360.cn)
 
-local _M = { _VERSION = "0.0.2" }
+local _M = { _VERSION = "0.0.3" }
 
 _M.CONF = {
     initted = false,
     app = "default",
     idc = "",
-    counter_path = {},
-    histogram_path = {},
-    log_method = {},
-    buckets = {10,11,12,14,16,18,20,23,26,29,33,37,42,47,53,60,67,75,84,95,107,120,135,152,171,192,216,243,273,307,345,388,437,492,554,623,701,789,888,1000},
-    switch = {
-        METRIC_COUNTER_RESPONSES = true,
-        METRIC_COUNTER_SENT_BYTES = true,
-        METRIC_HISTOGRAM_LATENCY = true,
-        METRIC_GAUGE_CONNECTS = true
+    monitor_switch = {
+        METRIC_COUNTER_RESPONSES = {},
+        METRIC_COUNTER_SENT_BYTES = {},
+        METRIC_COUNTER_REVD_BYTES = {},
+        METRIC_HISTOGRAM_LATENCY = {},
+        METRIC_GAUGE_CONNECTS = {}
     },
+    log_method = {},
+    buckets = {},
     merge_path = false
 }
 
@@ -31,6 +30,13 @@ local function inTable(needle, table_name)
     return false
 end
 
+local function empty(var)
+    if type(var) == "table" then
+        return next(var) == nil
+    end
+    return var == nil or var == '' or not var
+end
+
 function _M:init(user_config)
     for k, v in pairs(user_config) do
         if k == "app" then
@@ -43,16 +49,6 @@ function _M:init(user_config)
                 return nil, '"idc" must be a string'
             end
             self.CONF.idc = v
-        elseif k == "counter_path" then
-            if type(v) ~= "table" then
-                return nil, '"counter_path" must be a table'
-            end
-            self.CONF.counter_path = v
-        elseif k == "histogram_path" then
-            if type(v) ~= "table" then
-                return nil, '"histogram_path" must be a table'
-            end
-            self.CONF.histogram_path = v
         elseif k == "log_method" then
             if type(v) ~= "table" then
                 return nil, '"log_method" must be a table'
@@ -63,13 +59,13 @@ function _M:init(user_config)
                 return nil, '"buckets" must be a table'
             end
             self.CONF.buckets = v
-        elseif k == "switch" then
+        elseif k == "monitor_switch" then
             if type(v) ~= "table" then
-                return nil, '"switch" must be a table'
+                return nil, '"monitor_switch" must be a table'
             end
             for i, j in pairs(v) do
-                if self.CONF.switch[i] then
-                    self.CONF.switch[i] = j
+                if type(self.CONF.monitor_switch[i]) == "table" then
+                    self.CONF.monitor_switch[i] = j
                 end
             end
         elseif k == "merge_path" then
@@ -86,23 +82,25 @@ function _M:init(user_config)
     prometheus = require("prometheus.prometheus").init("prometheus_metrics")
 
     -- QPS
-    if self.CONF.switch.METRIC_COUNTER_RESPONSES then
+    if not empty(self.CONF.monitor_switch.METRIC_COUNTER_RESPONSES) then
         metric_requests = prometheus:counter(
-            "module_responses", 
-            "[" .. self.CONF.idc .. "] number of /path", 
+            "module_responses",
+            "[" .. self.CONF.idc .. "] number of /path",
             {"app", "api", "module", "method", "code"}
         )
     end
 
-    if self.CONF.switch.METRIC_COUNTER_SENT_BYTES then
-        -- 流量 out
+    -- 流量 out
+    if not empty(self.CONF.monitor_switch.METRIC_COUNTER_SENT_BYTES) then
         metric_traffic_out = prometheus:counter(
             "module_sent_bytes",
             "[" .. self.CONF.idc .. "] traffic out of /path",
             {"app", "api", "module", "method", "code"}
         )
+    end
 
-        -- 流量 in
+    -- 流量 in
+    if not empty(self.CONF.monitor_switch.METRIC_COUNTER_REVD_BYTES) then
         metric_traffic_in = prometheus:counter(
             "module_revd_bytes",
             "[" .. self.CONF.idc .. "] traffic in of /path",
@@ -111,20 +109,20 @@ function _M:init(user_config)
     end
 
     -- 延迟
-    if self.CONF.switch.METRIC_HISTOGRAM_LATENCY then
+    if not empty(self.CONF.monitor_switch.METRIC_HISTOGRAM_LATENCY) then
         metric_latency = prometheus:histogram(
             "response_duration_milliseconds",
-            "[" .. self.CONF.idc .. "] http request latency", 
+            "[" .. self.CONF.idc .. "] http request latency",
             {"app", "api", "module", "method"},
             self.CONF.buckets
         )
     end
 
     -- 状态
-    if self.CONF.switch.METRIC_GAUGE_CONNECTS then
+    if not empty(self.CONF.monitor_switch.METRIC_GAUGE_CONNECTS) then
         metric_connections = prometheus:gauge(
             "module_connections",
-            "[" .. self.CONF.idc .. "] number of http connections", 
+            "[" .. self.CONF.idc .. "] number of http connections",
             {"app", "state"}
         )
     end
@@ -158,20 +156,23 @@ function _M:log()
     end
 
     path = string.lower(path)
-    local pathInCounter = inTable(path, self.CONF.counter_path)
-    local pathInHistogram = inTable(path, self.CONF.histogram_path)
 
-    if (pathInCounter or pathInHistogram) and inTable(method, self.CONF.log_method) then
-        if pathInCounter then
-            local labels = {self.CONF.app, path, "self", method, status}
-            if metric_requests then metric_requests:inc(1, labels) end
-            if metric_traffic_out then metric_traffic_out:inc(tonumber(ngx.var.bytes_sent), labels) end
-            if metric_traffic_in then metric_traffic_in:inc(tonumber(ngx.var.request_length), labels) end
+    if inTable(method, self.CONF.log_method) then
+        if metric_requests and inTable(path, self.CONF.monitor_switch.METRIC_COUNTER_RESPONSES) then
+            metric_requests:inc(1, {self.CONF.app, path, "self", method, status})
         end
 
-        if pathInHistogram then
+        if metric_traffic_out and inTable(path, self.CONF.monitor_switch.METRIC_COUNTER_SENT_BYTES) then
+            metric_traffic_out:inc(tonumber(ngx.var.bytes_sent), {self.CONF.app, path, "self", method, status})
+        end
+
+        if metric_traffic_in and inTable(path, self.CONF.monitor_switch.METRIC_COUNTER_REVD_BYTES) then
+            metric_traffic_in:inc(tonumber(ngx.var.request_length), {self.CONF.app, path, "self", method, status})
+        end
+
+        if metric_latency and inTable(path, self.CONF.monitor_switch.METRIC_HISTOGRAM_LATENCY) then
             local tm = (ngx.now() - ngx.req.start_time()) * 1000
-            if metric_latency then metric_latency:observe(tm, {self.CONF.app, path, "self", method}) end
+            metric_latency:observe(tm, {self.CONF.app, path, "self", method})
         end
     end
 
@@ -202,7 +203,7 @@ function _M:metrics()
         metric_connections:set(ngx.var.connections_waiting, {self.CONF.app, "waiting"})
         metric_connections:set(ngx.var.connections_writing, {self.CONF.app, "writing"})
     end
-    
+
     prometheus:collect()
 
     -- 合并下游自定义统计项, merge_path 需跟 metrics 在同一个server下

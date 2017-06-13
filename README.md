@@ -16,7 +16,7 @@ lua_shared_dict prometheus_metrics 10m;
 server {
     # 添加到业务的 server 配置中
     log_by_lua_block {
-         require("prometheus.wrapper"):log()
+        require("prometheus.wrapper"):log()
     }
 }
 
@@ -42,27 +42,15 @@ server {
 require("prometheus.wrapper"):init({
         app = "mbsug",
         idc = QIHOO_IDC,
-        counter_path = { -- 添加 counter 统计的 path
-            "/idxdata/get",
-            "/idxdata/del",
-            "/status.html",
-            "..."
-        },
-        histogram_path = { -- 添加 histogram 统计的 path
-            "/idxdata/get"
-        },
-        log_method = { -- method 过滤
-            "GET",
-            "POST",
-            "HEAD"
-        },
-        buckets = {1,2,3,4,5,6,7,8,9,10,11,13,15,17,19,22,25,28,32,36,41,47,54,62,71,81,92,105,120,137,156,178,203,231,263,299,340,387,440,500} -- 桶距配置  
-        switch = {
-            METRIC_COUNTER_RESPONSES = true,
-            METRIC_COUNTER_SENT_BYTES = true,
-            METRIC_HISTOGRAM_LATENCY = true,
+        monitor_switch = {
+            METRIC_COUNTER_RESPONSES = {"/s", "/status.html"},
+            METRIC_COUNTER_SENT_BYTES = {"/s"},
+            METRIC_COUNTER_REVD_BYTES = false,
+            METRIC_HISTOGRAM_LATENCY = {"/s", "/jump"},
             METRIC_GAUGE_CONNECTS = true
         },
+        log_method = {"GET","POST"}, -- method 过滤
+        buckets = {1,2,3,4,5,6,7,8,9,10,11,13,15,17,19,22,25,28,32,36,41,47,54,62,71,81,92,105,120,137,156,178,203,231,263,299,340,387,440,500} -- 桶距配置
         merge_path = "/metrics.php"
     })
 ```
