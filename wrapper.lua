@@ -209,8 +209,13 @@ function _M:metrics()
     -- 合并下游自定义统计项, merge_path 需跟 metrics 在同一个server下
     if self.CONF.merge_path and type(self.CONF.merge_path) == "string" then
         local res = ngx.location.capture(self.CONF.merge_path)
-        if res and res.status == 200 then
-            ngx.say(res.body)
+        if res and res.status == 200 and type(res.body) == "string" and res.body then
+            local newstr, n, err = ngx.re.gsub(res.body, "# (HELP|TYPE).*\n", "", "i")
+            if newstr then
+                ngx.say(newstr)
+            else
+                ngx.log(ngx.ERR, "error: ", err)
+            end
         end
     end
 end
