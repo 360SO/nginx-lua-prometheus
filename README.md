@@ -39,20 +39,24 @@ server {
 
 ```lua
 -- 添加到 init_by_lua_* 相关代码中，初始化相关配置
-require("prometheus.wrapper"):init({
-        app = "mbsug",
-        idc = QIHOO_IDC,
-        monitor_switch = {
-            METRIC_COUNTER_RESPONSES = {"/s", "/status.html"},
-            METRIC_COUNTER_SENT_BYTES = {"/s"},
-            METRIC_COUNTER_REVD_BYTES = false,
-            METRIC_HISTOGRAM_LATENCY = {"/s", "/jump"},
-            METRIC_GAUGE_CONNECTS = true
-        },
-        log_method = {"GET","POST"}, -- method 过滤
-        buckets = {1,2,3,4,5,6,7,8,9,10,11,13,15,17,19,22,25,28,32,36,41,47,54,62,71,81,92,105,120,137,156,178,203,231,263,299,340,387,440,500} -- 桶距配置
-        merge_path = "/metrics.php"
-    })
+local ok, err = require("prometheus.wrapper"):init({
+    app = "mbsug",
+    idc = QIHOO_IDC,
+    monitor_switch = {
+        METRIC_COUNTER_RESPONSES = {"/s", "/status.html"},
+        METRIC_COUNTER_SENT_BYTES = {"/s"},
+        METRIC_COUNTER_REVD_BYTES = false,
+        METRIC_HISTOGRAM_LATENCY = {"/s", "/jump"},
+        METRIC_GAUGE_CONNECTS = true
+    },
+    log_method = {"GET", "POST"}, -- method 过滤
+    buckets = {1,2,3,4,5,6,7,8,9,10,11,13,15,17,19,22,25,28,32,36,41,47,54,62,71,81,92,105,120,137,156,178,203,231,263,299,340,387,440,500} -- 桶距配置
+    merge_path = "/metrics.php"
+})
+
+if not ok then
+    ngx.log(ngx.ERR, "prometheus init error: ", err)
+end
 ```
 
 ## Quick start guide
