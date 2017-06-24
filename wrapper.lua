@@ -79,11 +79,11 @@ function _M:init(user_config)
     local config = ngx.shared.prometheus_metrics
     config:flush_all()
 
-    prometheus = require("prometheus.prometheus").init("prometheus_metrics")
+    local prometheus = require("prometheus.prometheus").init("prometheus_metrics")
 
     -- QPS
     if not empty(self.CONF.monitor_switch.METRIC_COUNTER_RESPONSES) then
-        metric_requests = prometheus:counter(
+        self.metric_requests = prometheus:counter(
             "module_responses",
             "[" .. self.CONF.idc .. "] number of /path",
             {"app", "api", "module", "method", "code"}
@@ -92,7 +92,7 @@ function _M:init(user_config)
 
     -- 流量 out
     if not empty(self.CONF.monitor_switch.METRIC_COUNTER_SENT_BYTES) then
-        metric_traffic_out = prometheus:counter(
+        self.metric_traffic_out = prometheus:counter(
             "module_sent_bytes",
             "[" .. self.CONF.idc .. "] traffic out of /path",
             {"app", "api", "module", "method", "code"}
@@ -101,7 +101,7 @@ function _M:init(user_config)
 
     -- 流量 in
     if not empty(self.CONF.monitor_switch.METRIC_COUNTER_REVD_BYTES) then
-        metric_traffic_in = prometheus:counter(
+        self.metric_traffic_in = prometheus:counter(
             "module_revd_bytes",
             "[" .. self.CONF.idc .. "] traffic in of /path",
             {"app", "api", "module", "method", "code"}
@@ -110,7 +110,7 @@ function _M:init(user_config)
 
     -- 延迟
     if not empty(self.CONF.monitor_switch.METRIC_HISTOGRAM_LATENCY) then
-        metric_latency = prometheus:histogram(
+        self.metric_latency = prometheus:histogram(
             "response_duration_milliseconds",
             "[" .. self.CONF.idc .. "] http request latency",
             {"app", "api", "module", "method"},
@@ -120,7 +120,7 @@ function _M:init(user_config)
 
     -- 状态
     if not empty(self.CONF.monitor_switch.METRIC_GAUGE_CONNECTS) then
-        metric_connections = prometheus:gauge(
+        self.metric_connections = prometheus:gauge(
             "module_connections",
             "[" .. self.CONF.idc .. "] number of http connections",
             {"app", "state"}
@@ -129,6 +129,7 @@ function _M:init(user_config)
 
     if true then
         self.CONF.initted = true
+        self.prometheus = prometheus
     end
 
     return self.CONF.initted
@@ -148,7 +149,7 @@ function _M:log()
         return nil, "empty request_uri|method"
     end
 
-    local st, sp = string.find(request_uri, "?")
+    local st, _ = string.find(request_uri, "?")
     if st == nil then
         path = request_uri
     else
@@ -158,30 +159,37 @@ function _M:log()
     path = string.lower(path)
 
     if inTable(method, self.CONF.log_method) then
-        if metric_requests and inTable(path, self.CONF.monitor_switch.METRIC_COUNTER_RESPONSES) then
-            metric_requests:inc(1, {self.CONF.app, path, "self", method, status})
+        if self.metric_requests and inTable(path, self.CONF.monitor_switch.METRIC_COUNTER_RESPONSES) then
+            self.metric_requests:inc(1, {self.CONF.app, path, "self", method, status})
         end
 
-        if metric_traffic_out and inTable(path, self.CONF.monitor_switch.METRIC_COUNTER_SENT_BYTES) then
-            metric_traffic_out:inc(tonumber(ngx.var.bytes_sent), {self.CONF.app, path, "self", method, status})
+        if self.metric_traffic_out and inTable(path, self.CONF.monitor_switch.METRIC_COUNTER_SENT_BYTES) then
+            self.metric_traffic_out:inc(tonumber(ngx.var.bytes_sent), {self.CONF.app, path, "self", method, status})
         end
 
-        if metric_traffic_in and inTable(path, self.CONF.monitor_switch.METRIC_COUNTER_REVD_BYTES) then
-            metric_traffic_in:inc(tonumber(ngx.var.request_length), {self.CONF.app, path, "self", method, status})
+        if self.metric_traffic_in and inTable(path, self.CONF.monitor_switch.METRIC_COUNTER_REVD_BYTES) then
+            self.metric_traffic_in:inc(tonumber(ngx.var.request_length), {self.CONF.app, path, "self", method, status})
         end
 
-        if metric_latency and inTable(path, self.CONF.monitor_switch.METRIC_HISTOGRAM_LATENCY) then
+        if self.metric_latency and inTable(path, self.CONF.monitor_switch.METRIC_HISTOGRAM_LATENCY) then
             local tm = (ngx.now() - ngx.req.start_time()) * 1000
-            metric_latency:observe(tm, {self.CONF.app, path, "self", method})
+            self.metric_latency:observe(tm, {self.CONF.app, path, "self", method})
         end
     end
 
     return true
 end
 
+function _M:getPrometheus()
+    if not self.CONF.initted then
+        return nil, "init first.."
+    end
+    return self.prometheus
+end
+
 function _M:metrics()
     local ip = ngx.var.remote_addr or ""
-    local st, sp = string.find(ip, ".", 1, true)
+    local st, _ = string.find(ip, ".", 1, true)
     local sub_ip = ip
     if st == nil then
         sub_ip = ip
@@ -198,19 +206,19 @@ function _M:metrics()
         ngx.exit(ngx.HTTP_OK)
     end
 
-    if metric_connections and ngx.var.connections_reading and ngx.var.connections_waiting and ngx.var.connections_writing then
-        metric_connections:set(ngx.var.connections_reading, {self.CONF.app, "reading"})
-        metric_connections:set(ngx.var.connections_waiting, {self.CONF.app, "waiting"})
-        metric_connections:set(ngx.var.connections_writing, {self.CONF.app, "writing"})
+    if self.metric_connections and ngx.var.connections_reading and ngx.var.connections_waiting and ngx.var.connections_writing then
+        self.metric_connections:set(ngx.var.connections_reading, {self.CONF.app, "reading"})
+        self.metric_connections:set(ngx.var.connections_waiting, {self.CONF.app, "waiting"})
+        self.metric_connections:set(ngx.var.connections_writing, {self.CONF.app, "writing"})
     end
 
-    prometheus:collect()
+    self.prometheus:collect()
 
     -- 合并下游自定义统计项, merge_path 需跟 metrics 在同一个server下
     if self.CONF.merge_path and type(self.CONF.merge_path) == "string" then
         local res = ngx.location.capture(self.CONF.merge_path)
         if res and res.status == 200 and type(res.body) == "string" and res.body then
-            local newstr, n, err = ngx.re.gsub(res.body, "# (HELP|TYPE).*\n", "", "i")
+            local newstr, _, err = ngx.re.gsub(res.body, "# (HELP|TYPE).*\n", "", "i")
             if newstr then
                 ngx.say(newstr)
             else
