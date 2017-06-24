@@ -40,14 +40,8 @@
 
 
 -- Default set of latency buckets, 5ms to 10s:
-local DEFAULT_BUCKETS = {
-  0.005, 0.01, 0.02, 0.03, 0.05, 0.075, 0.1, 0.2, 0.3,
-  0.4, 0.5, 0.75, 1, 1.5, 2, 3, 4, 5, 10
-}
-
-local app
-local COUNTER_LABELS = { "api", "module", "method", "code" }
-local HISTOGRAM_LABELS = { "api", "module", "method" }
+local DEFAULT_BUCKETS = {0.005, 0.01, 0.02, 0.03, 0.05, 0.075, 0.1, 0.2, 0.3,
+                         0.4, 0.5, 0.75, 1, 1.5, 2, 3, 4, 5, 10}
 
 -- Metric is a "parent class" for all metrics.
 local Metric = {}
@@ -69,17 +63,17 @@ function Metric:check_labels(label_values)
   if self.label_names == nil and label_values == nil then
     return
   elseif self.label_names == nil and label_values ~= nil then
-    return "Expected no labels for " .. self.name .. ", got " .. #label_values
+    return "Expected no labels for " .. self.name .. ", got " ..  #label_values
   elseif label_values == nil and self.label_names ~= nil then
     return "Expected " .. #self.label_names .. " labels for " ..
-            self.name .. ", got none"
+           self.name .. ", got none"
   elseif #self.label_names ~= #label_values then
     return "Wrong number of labels for " .. self.name .. ". Expected " ..
-            #self.label_names .. ", got " .. #label_values
+           #self.label_names .. ", got " .. #label_values
   else
     for i, k in ipairs(self.label_names) do
       if label_values[i] == nil then
-        return "Unexpected nil value for label " .. k .. " of " .. self.name
+        return "Unexpected nil value for label " .. k ..  " of " .. self.name
       end
     end
   end
@@ -159,10 +153,12 @@ local function full_metric_name(name, label_names, label_values)
   end
   local label_parts = {}
   for idx, key in ipairs(label_names) do
-    local label_value = (string.format("%s", label_values[idx]):gsub("\\", "\\\\"):gsub("\n", "\\n"):gsub('"', '\\"'))
+    local label_value = (string.format("%s", label_values[idx])
+      :gsub("\\", "\\\\")
+      :gsub("\n", "\\n")
+      :gsub('"', '\\"'))
     table.insert(label_parts, key .. '="' .. label_value .. '"')
   end
-  table.insert(label_parts, 1, 'app="' .. app .. '"')
   return name .. "{" .. table.concat(label_parts, ",") .. "}"
 end
 
@@ -241,15 +237,15 @@ end
 --
 -- Returns:
 --   an object that should be used to register metrics.
-function Prometheus.init(dict_name, app_name)
+function Prometheus.init(dict_name, prefix)
   local self = setmetatable({}, Prometheus)
   self.dict = ngx.shared[dict_name or "prometheus_metrics"]
   self.help = {}
-  if not app_name or type(app_name) ~= "string" then
-    ngx.log(ngx.ERR, "app_name must be initialized and must be string, it stands for the app name")
-    return
+  if prefix then
+    self.prefix = prefix
+  else
+    self.prefix = ''
   end
-  app = app_name
   self.type = {}
   self.registered = {}
   self.buckets = {}
@@ -268,7 +264,8 @@ function Prometheus:log_error(...)
 end
 
 function Prometheus:log_error_kv(key, value, err)
-  self:log_error("Error while setting '", key, "' to '", value, "': '", err, "'")
+  self:log_error(
+    "Error while setting '", key, "' to '", value, "': '", err, "'")
 end
 
 -- Register a counter.
@@ -281,7 +278,7 @@ end
 --
 -- Returns:
 --   a Counter object.
-function Prometheus:counter(name, description)
+function Prometheus:counter(name, description, label_names)
   if not self.initialized then
     ngx.log(ngx.ERR, "Prometheus module has not been initialized")
     return
@@ -295,7 +292,7 @@ function Prometheus:counter(name, description)
   self.help[name] = description
   self.type[name] = "counter"
 
-  return Counter:new { name = name, label_names = COUNTER_LABELS, prometheus = self }
+  return Counter:new{name=name, label_names=label_names, prometheus=self}
 end
 
 -- Register a gauge.
@@ -322,7 +319,7 @@ function Prometheus:gauge(name, description, label_names)
   self.help[name] = description
   self.type[name] = "gauge"
 
-  return Gauge:new { name = name, label_names = label_names, prometheus = self }
+  return Gauge:new{name=name, label_names=label_names, prometheus=self}
 end
 
 
@@ -337,13 +334,20 @@ end
 --
 -- Returns:
 --   a Histogram object.
-function Prometheus:histogram(name, description, buckets)
+function Prometheus:histogram(name, description, label_names, buckets)
   if not self.initialized then
     ngx.log(ngx.ERR, "Prometheus module has not been initialized")
     return
   end
 
-  for _, suffix in ipairs({ "", "_bucket", "_count", "_sum" }) do
+  for _, label_name in ipairs(label_names or {}) do
+    if label_name == "le" then
+      self:log_error("Invalid label name 'le' in " .. name)
+      return
+    end
+  end
+
+  for _, suffix in ipairs({"", "_bucket", "_count", "_sum"}) do
     if self.registered[name .. suffix] then
       self:log_error("Duplicate metric " .. name .. suffix)
       return
@@ -356,7 +360,7 @@ function Prometheus:histogram(name, description, buckets)
   self.buckets[name] = buckets or DEFAULT_BUCKETS
   self.bucket_format[name] = construct_bucket_format(self.buckets[name])
 
-  return Histogram:new { name = name, label_names = HISTOGRAM_LABELS, prometheus = self }
+  return Histogram:new{name=name, label_names=label_names, prometheus=self}
 end
 
 -- Set a given dictionary key.
@@ -469,15 +473,15 @@ function Prometheus:collect()
       local short_name = short_metric_name(key)
       if not seen_metrics[short_name] then
         if self.help[short_name] then
-          ngx.say("# HELP " .. short_name .. " " .. self.help[short_name])
+          ngx.say("# HELP " .. self.prefix .. short_name .. " " .. self.help[short_name])
         end
         if self.type[short_name] then
-          ngx.say("# TYPE " .. short_name .. " " .. self.type[short_name])
+          ngx.say("# TYPE " .. self.prefix .. short_name .. " " .. self.type[short_name])
         end
         seen_metrics[short_name] = true
       end
       -- Replace "Inf" with "+Inf" in each metric's last bucket 'le' label.
-      ngx.say(key:gsub('le="Inf"', 'le="+Inf"'), " ", value)
+      ngx.say(self.prefix .. key:gsub('le="Inf"', 'le="+Inf"'), " ", value)
     else
       self:log_error("Error getting '", key, "': ", err)
     end
