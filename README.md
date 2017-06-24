@@ -7,6 +7,67 @@ This is a Lua library that can be used with Nginx to keep track of metrics and
 expose them on a separate web page to be pulled by
 [Prometheus](https://prometheus.io).
 
+## 使用 prometheus_wrapper.lua 快速接入
+
+#### nginx.conf
+
+```nginx
+lua_shared_dict prometheus_metrics 10m;
+server {
+    # 添加到业务的 server 配置中
+    log_by_lua_block {
+        require("prometheus.wrapper"):log()
+    }
+}
+
+# 单独配置
+server {
+    listen 8001;
+    allow 10.0.0.0/8;
+    allow 172.0.0.0/8;
+    deny all;
+    default_type  text/plain;
+    location /metrics {
+        content_by_lua_block {
+            require("prometheus.wrapper"):metrics()
+        }
+    }
+}
+```
+
+#### lua
+添加到 init_by_lua_* 相关代码中，初始化相关配置
+```lua
+local ok, err = require("prometheus.wrapper"):init({
+    app = "mbsug",
+    idc = QIHOO_IDC,
+    monitor_switch = {
+        METRIC_COUNTER_RESPONSES = {"/s", "/status.html"},
+        METRIC_COUNTER_SENT_BYTES = {"/s"},
+        METRIC_COUNTER_REVD_BYTES = false,
+        METRIC_HISTOGRAM_LATENCY = {"/s", "/jump"},
+        METRIC_GAUGE_CONNECTS = true
+    },
+    log_method = {"GET", "POST"}, -- method 过滤
+    buckets = {1,2,3,4,5,6,7,8,9,10,11,13,15,17,19,22,25,28,32,36,41,47,54,62,71,81,92,105,120,137,156,178,203,231,263,299,340,387,440,500} -- 桶距配置
+    merge_path = "/metrics.php"
+})
+
+if not ok then
+    ngx.log(ngx.ERR, "prometheus init error: ", err)
+end
+```
+
+自定义 log，添加到 content_by_lua_* 相关代码中（如有需要）
+```lua
+local wrapper = require("prometheus.wrapper")
+wrapper:latencyLog(2.23, "searcher", "/get", "GET") -- 延迟
+wrapper:qpsCounterLog(1, "searcher", "/get", "GET", 200) -- QPS
+wrapper:sendBytesCounterLog(1024, "searcher", "/get", "GET", 200) -- 流量 out
+wrapper:receiveBytesCounterLog(2048, "searcher", "/get", "GET", 200) -- 流量 in
+wrapper:gaugeLog("alive", "searcher") -- 状态
+```
+
 ## Quick start guide
 
 You would need to install nginx package with lua support (`nginx-extras` on
