@@ -180,6 +180,49 @@ function _M:log()
     return true
 end
 
+function _M:latencyLog(time, module_name, api, method)
+    if not self.metric_latency or not self.CONF.initted then
+        return false
+    end
+    method = method or "GET"
+    self.metric_latency:observe(time, {self.CONF.app, api, module_name, method})
+    return true
+end
+
+function _M:counterLog(counter_ins, value, module_name, api, method, code)
+    if not counter_ins or not self.CONF.initted then
+        return false
+    end
+    counter_ins:inc(tonumber(value), {self.CONF.app, module_name, api, method, code})
+    return true
+end
+
+function _M:qpsCounterLog(times, module_name, api, method, code)
+    method = method or "GET"
+    code = code or 200
+    return self:counterLog(self.metric_requests, times, module_name, api, method, code)
+end
+
+function _M:sendBytesCounterLog(bytes, module_name, api, method, code)
+    method = method or "GET"
+    code = code or 200
+    return self:counterLog(self.metric_traffic_out, bytes, module_name, api, method, code)
+end
+
+function _M:receiveBytesCounterLog(bytes, module_name, api, method, code)
+    method = method or "GET"
+    code = code or 200
+    return self:counterLog(self.metric_traffic_in, bytes, module_name, api, method, code)
+end
+
+function _M:gaugeLog(value, state)
+    if not self.metric_connections or not self.CONF.initted then
+        return false
+    end
+    self.metric_connections:set(value, {self.CONF.app, state})
+    return true
+end
+
 function _M:getPrometheus()
     if not self.CONF.initted then
         return nil, "init first.."
