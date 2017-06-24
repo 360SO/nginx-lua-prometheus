@@ -1,6 +1,6 @@
 -- Copyright (C) by Jiang Yang (jiangyang-pd@360.cn)
 
-local _M = { _VERSION = "0.0.3" }
+local _M = { _VERSION = "1.0.0" }
 
 _M.CONF = {
     initted = false,

@@ -36,9 +36,8 @@ server {
 ```
 
 #### lua
-
+添加到 init_by_lua_* 相关代码中，初始化相关配置
 ```lua
--- 添加到 init_by_lua_* 相关代码中，初始化相关配置
 local ok, err = require("prometheus.wrapper"):init({
     app = "mbsug",
     idc = QIHOO_IDC,
@@ -57,6 +56,16 @@ local ok, err = require("prometheus.wrapper"):init({
 if not ok then
     ngx.log(ngx.ERR, "prometheus init error: ", err)
 end
+```
+
+自定义 log，添加到 content_by_lua_* 相关代码中（如有需要）
+```lua
+local wrapper = require("prometheus.wrapper")
+wrapper:latencyLog(2.23, "searcher", "/get", "GET") -- 延迟
+wrapper:qpsCounterLog(1, "searcher", "/get", "GET", 200) -- QPS
+wrapper:sendBytesCounterLog(1024, "searcher", "/get", "GET", 200) -- 流量 out
+wrapper:receiveBytesCounterLog(2048, "searcher", "/get", "GET", 200) -- 流量 in
+wrapper:gaugeLog("alive", "searcher") -- 状态
 ```
 
 ## Quick start guide
