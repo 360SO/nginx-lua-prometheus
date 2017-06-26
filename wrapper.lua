@@ -1,6 +1,9 @@
 -- Copyright (C) by Jiang Yang (jiangyang-pd@360.cn)
 
-local _M = { _VERSION = "1.0.0" }
+local _M = { _VERSION = "1.1.1" }
+
+local find = string.find
+local sub = string.sub
 
 _M.CONF = {
     initted = false,
@@ -18,6 +21,7 @@ _M.CONF = {
     merge_path = false
 }
 
+
 local function inTable(needle, table_name)
     if type(needle) ~= "string" or type(table_name) ~= "table" then
         return false
@@ -30,12 +34,27 @@ local function inTable(needle, table_name)
     return false
 end
 
+
 local function empty(var)
     if type(var) == "table" then
         return next(var) == nil
     end
     return var == nil or var == '' or not var
 end
+
+
+local function explode(separator, str)
+    if (separator == '') then return false end
+    local pos, t = 0, {}
+    -- for each divider found
+    for st,sp in function() return find(str, separator, pos, true) end do
+        table.insert(t, sub(str, pos, st-1)) -- Attach chars left of current divider
+        pos = sp + 1 -- Jump past current divider
+    end
+    table.insert(t, sub(str, pos)) -- Attach chars right of last divider
+    return t
+end
+
 
 function _M:init(user_config)
     for k, v in pairs(user_config) do
@@ -83,6 +102,7 @@ function _M:init(user_config)
 
     -- QPS
     if not empty(self.CONF.monitor_switch.METRIC_COUNTER_RESPONSES) then
+        self:parseLogUri("METRIC_COUNTER_RESPONSES")
         self.metric_requests = prometheus:counter(
             "module_responses",
             "[" .. self.CONF.idc .. "] number of /path",
@@ -92,6 +112,7 @@ function _M:init(user_config)
 
     -- 流量 out
     if not empty(self.CONF.monitor_switch.METRIC_COUNTER_SENT_BYTES) then
+        self:parseLogUri("METRIC_COUNTER_SENT_BYTES")
         self.metric_traffic_out = prometheus:counter(
             "module_sent_bytes",
             "[" .. self.CONF.idc .. "] traffic out of /path",
@@ -101,6 +122,7 @@ function _M:init(user_config)
 
     -- 流量 in
     if not empty(self.CONF.monitor_switch.METRIC_COUNTER_REVD_BYTES) then
+        self:parseLogUri("METRIC_COUNTER_REVD_BYTES")
         self.metric_traffic_in = prometheus:counter(
             "module_revd_bytes",
             "[" .. self.CONF.idc .. "] traffic in of /path",
@@ -110,6 +132,7 @@ function _M:init(user_config)
 
     -- 延迟
     if not empty(self.CONF.monitor_switch.METRIC_HISTOGRAM_LATENCY) then
+        self:parseLogUri("METRIC_HISTOGRAM_LATENCY")
         self.metric_latency = prometheus:histogram(
             "response_duration_milliseconds",
             "[" .. self.CONF.idc .. "] http request latency",
@@ -135,12 +158,13 @@ function _M:init(user_config)
     return self.CONF.initted
 end
 
+
 function _M:log()
     if not self.CONF.initted then
         return nil, "init first.."
     end
 
-    local path = ""
+    local uri
     local method = ngx.var.request_method or ""
     local request_uri = ngx.var.request_uri or ""
     local status = ngx.var.status or ""
@@ -148,37 +172,34 @@ function _M:log()
     if not request_uri or not method then
         return nil, "empty request_uri|method"
     end
-
-    local st, _ = string.find(request_uri, "?")
-    if st == nil then
-        path = request_uri
-    else
-        path = string.sub(request_uri, 1, st-1)
-    end
-
-    path = string.lower(path)
+    request_uri = string.lower(request_uri)
 
     if inTable(method, self.CONF.log_method) then
-        if self.metric_requests and inTable(path, self.CONF.monitor_switch.METRIC_COUNTER_RESPONSES) then
-            self.metric_requests:inc(1, {self.CONF.app, path, "self", method, status})
+        uri = self:isLogUri(request_uri, "METRIC_COUNTER_RESPONSES")
+        if self.metric_requests and uri then
+            self.metric_requests:inc(1, {self.CONF.app, uri, "self", method, status})
         end
 
-        if self.metric_traffic_out and inTable(path, self.CONF.monitor_switch.METRIC_COUNTER_SENT_BYTES) then
-            self.metric_traffic_out:inc(tonumber(ngx.var.bytes_sent), {self.CONF.app, path, "self", method, status})
+        uri = self:isLogUri(request_uri, "METRIC_COUNTER_SENT_BYTES")
+        if self.metric_traffic_out and uri then
+            self.metric_traffic_out:inc(tonumber(ngx.var.bytes_sent), {self.CONF.app, uri, "self", method, status})
         end
 
-        if self.metric_traffic_in and inTable(path, self.CONF.monitor_switch.METRIC_COUNTER_REVD_BYTES) then
-            self.metric_traffic_in:inc(tonumber(ngx.var.request_length), {self.CONF.app, path, "self", method, status})
+        uri = self:isLogUri(request_uri, "METRIC_COUNTER_REVD_BYTES")
+        if self.metric_traffic_in and uri then
+            self.metric_traffic_in:inc(tonumber(ngx.var.request_length), {self.CONF.app, uri, "self", method, status})
         end
 
-        if self.metric_latency and inTable(path, self.CONF.monitor_switch.METRIC_HISTOGRAM_LATENCY) then
+        uri = self:isLogUri(request_uri, "METRIC_HISTOGRAM_LATENCY")
+        if self.metric_latency and uri then
             local tm = (ngx.now() - ngx.req.start_time()) * 1000
-            self.metric_latency:observe(tm, {self.CONF.app, path, "self", method})
+            self.metric_latency:observe(tm, {self.CONF.app, uri, "self", method})
         end
     end
 
     return true
 end
+
 
 function _M:latencyLog(time, module_name, api, method)
     if not self.metric_latency or not self.CONF.initted then
@@ -189,6 +210,7 @@ function _M:latencyLog(time, module_name, api, method)
     return true
 end
 
+
 function _M:counterLog(counter_ins, value, module_name, api, method, code)
     if not counter_ins or not self.CONF.initted then
         return false
@@ -197,11 +219,13 @@ function _M:counterLog(counter_ins, value, module_name, api, method, code)
     return true
 end
 
+
 function _M:qpsCounterLog(times, module_name, api, method, code)
     method = method or "GET"
     code = code or 200
     return self:counterLog(self.metric_requests, times, module_name, api, method, code)
 end
+
 
 function _M:sendBytesCounterLog(bytes, module_name, api, method, code)
     method = method or "GET"
@@ -209,11 +233,13 @@ function _M:sendBytesCounterLog(bytes, module_name, api, method, code)
     return self:counterLog(self.metric_traffic_out, bytes, module_name, api, method, code)
 end
 
+
 function _M:receiveBytesCounterLog(bytes, module_name, api, method, code)
     method = method or "GET"
     code = code or 200
     return self:counterLog(self.metric_traffic_in, bytes, module_name, api, method, code)
 end
+
 
 function _M:gaugeLog(value, state)
     if not self.metric_connections or not self.CONF.initted then
@@ -223,6 +249,7 @@ function _M:gaugeLog(value, state)
     return true
 end
 
+
 function _M:getPrometheus()
     if not self.CONF.initted then
         return nil, "init first.."
@@ -230,14 +257,68 @@ function _M:getPrometheus()
     return self.prometheus
 end
 
+
+function _M:parseLogUri(monitor_key)
+    local res = {}
+    for _, uri in ipairs(self.CONF.monitor_switch[monitor_key]) do
+        -- /idxdata/get?type=obx&name=test => /idxdata/get, {"type=obx", name=test}
+        local path, params = self:parseUri(uri)
+        local uriConf = {
+            uri = uri,
+            path = path,
+            params = params
+        }
+        table.insert(res, uriConf)
+    end
+    self.CONF.monitor_switch[monitor_key] = res
+end
+
+
+function _M:isLogUri(request_uri, monitor_key)
+    local request_path, request_params = self:parseUri(request_uri)
+    for _, uriConf in ipairs(self.CONF.monitor_switch[monitor_key]) do
+        if uriConf["path"] == request_path then
+            if empty(uriConf["params"]) then
+                return uriConf["uri"]
+            else
+                for _, param in ipairs(uriConf["params"]) do
+                    if not inTable(param, request_params) then
+                        return false
+                    end
+                end
+                return uriConf["uri"]
+            end
+        end
+    end
+    return false
+end
+
+
+function _M:parseUri(uri)
+    local path = ""
+    local params = {}
+    local st, _ = find(uri, "?")
+    if st == nil then
+        path = uri
+    else
+        path = sub(uri, 1, st-1)
+        local param = sub(uri, st+1)
+        if param and param ~= "" then
+            params = explode("&", param)            
+        end
+    end
+    return path, params
+end
+
+
 function _M:metrics()
     local ip = ngx.var.remote_addr or ""
-    local st, _ = string.find(ip, ".", 1, true)
+    local st, _ = find(ip, ".", 1, true)
     local sub_ip = ip
     if st == nil then
         sub_ip = ip
     else
-        sub_ip = string.sub(ip, 1, st-1)
+        sub_ip = sub(ip, 1, st-1)
     end
 
     if sub_ip ~= '10' and sub_ip ~= '172' then
@@ -270,5 +351,6 @@ function _M:metrics()
         end
     end
 end
+
 
 return _M
