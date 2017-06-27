@@ -283,21 +283,31 @@ end
 
 function _M:parseLogUri(monitor_key)
     local res = {}
-    for _, uri in ipairs(self.CONF.monitor_switch[monitor_key]) do
-        -- /idxdata/get?type=obx&name=test => /idxdata/get, {"type=obx", name=test}
-        local path, params = self:parseUri(uri)
-        local uriConf = {
-            uri = uri,
-            path = path,
-            params = params
-        }
-        table.insert(res, uriConf)
+    local _t = type(self.CONF.monitor_switch[monitor_key])
+    if _t == "table" then
+        for _, uri in ipairs(self.CONF.monitor_switch[monitor_key]) do
+            -- /idxdata/get?type=obx&name=test => /idxdata/get, {"type=obx", name=test}
+            local path, params = self:parseUri(uri)
+            local uriConf = {
+                uri = uri,
+                path = path,
+                params = params
+            }
+            table.insert(res, uriConf)
+        end
+    elseif _t == "boolean" then
+        res = self.CONF.monitor_switch[monitor_key]
+    else
+        res = false
     end
     self.CONF.monitor_switch[monitor_key] = res
 end
 
 
 function _M:isLogUri(request_uri, monitor_key)
+    if type(self.CONF.monitor_switch[monitor_key]) ~= "table" then
+        return false
+    end
     local request_path, request_params = self:parseUri(request_uri)
     for _, uriConf in ipairs(self.CONF.monitor_switch[monitor_key]) do
         if uriConf["path"] == request_path then
