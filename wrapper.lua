@@ -14,7 +14,8 @@ _M.CONF = {
         METRIC_COUNTER_SENT_BYTES = {},
         METRIC_COUNTER_REVD_BYTES = {},
         METRIC_HISTOGRAM_LATENCY = {},
-        METRIC_GAUGE_CONNECTS = {}
+        METRIC_COUNTER_EXCEPTION = true,
+        METRIC_GAUGE_CONNECTS = true,
     },
     log_method = {},
     buckets = {},
@@ -130,6 +131,15 @@ function _M:init(user_config)
         )
     end
 
+    -- 程序异常
+    if not empty(self.CONF.monitor_switch.METRIC_COUNTER_EXCEPTION) then
+        self.metric_exceptions = prometheus:counter(
+            "module_exceptions",
+            "[" .. self.CONF.idc .. "] exceptions",
+            {"app", "exception", "module"}
+        )
+    end
+
     -- 延迟
     if not empty(self.CONF.monitor_switch.METRIC_HISTOGRAM_LATENCY) then
         self:parseLogUri("METRIC_HISTOGRAM_LATENCY")
@@ -145,7 +155,7 @@ function _M:init(user_config)
     if not empty(self.CONF.monitor_switch.METRIC_GAUGE_CONNECTS) then
         self.metric_connections = prometheus:gauge(
             "module_connections",
-            "[" .. self.CONF.idc .. "] number of http connections",
+            "[" .. self.CONF.idc .. "] state",
             {"app", "state"}
         )
     end
@@ -201,7 +211,7 @@ function _M:log()
 end
 
 
-function _M:latencyLog(time, module_name, api, method)
+function _M:latencyLog(time, api, module_name, method)
     if not self.metric_latency or not self.CONF.initted then
         return false
     end
@@ -211,33 +221,46 @@ function _M:latencyLog(time, module_name, api, method)
 end
 
 
-function _M:counterLog(counter_ins, value, module_name, api, method, code)
+function _M:counterLog(counter_ins, value, api, module_name, method, code)
     if not counter_ins or not self.CONF.initted then
         return false
     end
-    counter_ins:inc(tonumber(value), {self.CONF.app, module_name, api, method, code})
+    counter_ins:inc(tonumber(value), {self.CONF.app, api, module_name, method, code})
     return true
 end
 
 
-function _M:qpsCounterLog(times, module_name, api, method, code)
+function _M:qpsCounterLog(times, api, module_name, method, code)
     method = method or "GET"
     code = code or 200
-    return self:counterLog(self.metric_requests, times, module_name, api, method, code)
+    module_name = module_name or "self"
+    return self:counterLog(self.metric_requests, times, api, module_name, method, code)
 end
 
 
-function _M:sendBytesCounterLog(bytes, module_name, api, method, code)
+function _M:sendBytesCounterLog(bytes, api, module_name, method, code)
     method = method or "GET"
     code = code or 200
-    return self:counterLog(self.metric_traffic_out, bytes, module_name, api, method, code)
+    module_name = module_name or "self"
+    return self:counterLog(self.metric_traffic_out, bytes, api, module_name, method, code)
 end
 
 
-function _M:receiveBytesCounterLog(bytes, module_name, api, method, code)
+function _M:receiveBytesCounterLog(bytes, api, module_name, method, code)
     method = method or "GET"
     code = code or 200
-    return self:counterLog(self.metric_traffic_in, bytes, module_name, api, method, code)
+    module_name = module_name or "self"
+    return self:counterLog(self.metric_traffic_in, bytes, api, module_name, method, code)
+end
+
+
+function _M:exceptionLog(times, exception, module_name)
+    if not self.metric_exceptions or not self.CONF.initted then
+        return false
+    end
+    module_name = module_name or "self"
+    self.metric_exceptions:inc(tonumber(times), {self.CONF.app, exception, module_name})
+    return true
 end
 
 
@@ -304,7 +327,7 @@ function _M:parseUri(uri)
         path = sub(uri, 1, st-1)
         local param = sub(uri, st+1)
         if param and param ~= "" then
-            params = explode("&", param)            
+            params = explode("&", param)
         end
     end
     return path, params

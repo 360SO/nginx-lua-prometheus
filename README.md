@@ -61,10 +61,14 @@ end
 自定义 log，添加到 content_by_lua_* 相关代码中（如有需要）
 ```lua
 local wrapper = require("prometheus.wrapper")
-wrapper:latencyLog(2.23, "searcher", "/get", "GET") -- 延迟
-wrapper:qpsCounterLog(1, "searcher", "/get", "GET", 200) -- QPS
-wrapper:sendBytesCounterLog(1024, "searcher", "/get", "GET", 200) -- 流量 out
-wrapper:receiveBytesCounterLog(2048, "searcher", "/get", "GET", 200) -- 流量 in
+-- histogram
+wrapper:latencyLog(2.23, "/get", "searcher", "GET") -- 延迟
+-- counter
+wrapper:qpsCounterLog(1, "/get", "searcher", "GET", 200) -- QPS
+wrapper:sendBytesCounterLog(1024, "/get", "searcher", "GET", 200) -- 流量 out
+wrapper:receiveBytesCounterLog(2048, "/get", "searcher", "GET", 200) -- 流量 in
+wrapper:exceptionLog(1, "mysql_connect_err", "self") -- 异常
+-- gauge
 wrapper:gaugeLog("alive", "searcher") -- 状态
 ```
 
