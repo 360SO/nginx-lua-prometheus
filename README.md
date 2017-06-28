@@ -15,6 +15,7 @@ expose them on a separate web page to be pulled by
 lua_shared_dict prometheus_metrics 10m;
 server {
     # 添加到业务的 server 配置中
+    # 如果有多个 server，可以传入 app 区分不同业务。比如，require("prometheus.wrapper"):log("new_app")
     log_by_lua_block {
         require("prometheus.wrapper"):log()
     }

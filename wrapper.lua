@@ -1,6 +1,6 @@
 -- Copyright (C) by Jiang Yang (jiangyang-pd@360.cn)
 
-local _M = { _VERSION = "1.1.1" }
+local _M = { _VERSION = "1.1.3" }
 
 local find = string.find
 local sub = string.sub
@@ -169,12 +169,13 @@ function _M:init(user_config)
 end
 
 
-function _M:log()
+function _M:log(app)
     if not self.CONF.initted then
         return nil, "init first.."
     end
 
     local uri
+    local app = app or self.CONF.app
     local method = ngx.var.request_method or ""
     local request_uri = ngx.var.request_uri or ""
     local status = ngx.var.status or ""
@@ -187,23 +188,23 @@ function _M:log()
     if inTable(method, self.CONF.log_method) then
         uri = self:isLogUri(request_uri, "METRIC_COUNTER_RESPONSES")
         if self.metric_requests and uri then
-            self.metric_requests:inc(1, {self.CONF.app, uri, "self", method, status})
+            self.metric_requests:inc(1, {app, uri, "self", method, status})
         end
 
         uri = self:isLogUri(request_uri, "METRIC_COUNTER_SENT_BYTES")
         if self.metric_traffic_out and uri then
-            self.metric_traffic_out:inc(tonumber(ngx.var.bytes_sent), {self.CONF.app, uri, "self", method, status})
+            self.metric_traffic_out:inc(tonumber(ngx.var.bytes_sent), {app, uri, "self", method, status})
         end
 
         uri = self:isLogUri(request_uri, "METRIC_COUNTER_REVD_BYTES")
         if self.metric_traffic_in and uri then
-            self.metric_traffic_in:inc(tonumber(ngx.var.request_length), {self.CONF.app, uri, "self", method, status})
+            self.metric_traffic_in:inc(tonumber(ngx.var.request_length), {app, uri, "self", method, status})
         end
 
         uri = self:isLogUri(request_uri, "METRIC_HISTOGRAM_LATENCY")
         if self.metric_latency and uri then
             local tm = (ngx.now() - ngx.req.start_time()) * 1000
-            self.metric_latency:observe(tm, {self.CONF.app, uri, "self", method})
+            self.metric_latency:observe(tm, {app, uri, "self", method})
         end
     end
 
