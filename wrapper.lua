@@ -125,7 +125,7 @@ function _M:init(user_config)
     if not empty(self.CONF.monitor_switch.METRIC_COUNTER_REVD_BYTES) then
         self:parseLogUri("METRIC_COUNTER_REVD_BYTES")
         self.metric_traffic_in = prometheus:counter(
-            "module_revd_bytes",
+            "module_rcvd_bytes",
             "[" .. self.CONF.idc .. "] traffic in of /path",
             {"app", "api", "module", "method", "code"}
         )
