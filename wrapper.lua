@@ -212,64 +212,62 @@ function _M:log(app)
 end
 
 
-function _M:latencyLog(time, api, module_name, method)
+function _M:latencyLog(time, api, module_name, method, app)
     if not self.metric_latency or not self.CONF.initted then
         return false
     end
+    app = app or self.CONF.app
     method = method or "GET"
-    self.metric_latency:observe(time, {self.CONF.app, api, module_name, method})
+    self.metric_latency:observe(time, {app, api, module_name, method})
     return true
 end
 
 
-function _M:counterLog(counter_ins, value, api, module_name, method, code)
+function _M:counterLog(counter_ins, value, api, module_name, method, code, app)
     if not counter_ins or not self.CONF.initted then
         return false
     end
-    counter_ins:inc(tonumber(value), {self.CONF.app, api, module_name, method, code})
+    method = method or "GET"
+    code = code or 200
+    module_name = module_name or "self"
+    app = app or self.CONF.app
+    counter_ins:inc(tonumber(value), {app, api, module_name, method, code})
     return true
 end
 
 
-function _M:qpsCounterLog(times, api, module_name, method, code)
-    method = method or "GET"
-    code = code or 200
-    module_name = module_name or "self"
-    return self:counterLog(self.metric_requests, times, api, module_name, method, code)
+function _M:qpsCounterLog(times, api, module_name, method, code, app)
+    return self:counterLog(self.metric_requests, times, api, module_name, method, code, app)
 end
 
 
-function _M:sendBytesCounterLog(bytes, api, module_name, method, code)
-    method = method or "GET"
-    code = code or 200
-    module_name = module_name or "self"
-    return self:counterLog(self.metric_traffic_out, bytes, api, module_name, method, code)
+function _M:sendBytesCounterLog(bytes, api, module_name, method, code, app)
+    return self:counterLog(self.metric_traffic_out, bytes, api, module_name, method, code, app)
 end
 
 
-function _M:receiveBytesCounterLog(bytes, api, module_name, method, code)
-    method = method or "GET"
-    code = code or 200
-    module_name = module_name or "self"
-    return self:counterLog(self.metric_traffic_in, bytes, api, module_name, method, code)
+function _M:receiveBytesCounterLog(bytes, api, module_name, method, code, app)
+    return self:counterLog(self.metric_traffic_in, bytes, api, module_name, method, code, app)
 end
 
 
-function _M:exceptionLog(times, exception, module_name)
+function _M:exceptionLog(times, exception, module_name, app)
     if not self.metric_exceptions or not self.CONF.initted then
         return false
     end
     module_name = module_name or "self"
-    self.metric_exceptions:inc(tonumber(times), {self.CONF.app, exception, module_name})
+    app = app or self.CONF.app
+    self.metric_exceptions:inc(tonumber(times), {app, exception, module_name})
     return true
 end
 
 
-function _M:gaugeLog(value, state)
+function _M:gaugeLog(value, state, app)
     if not self.metric_connections or not self.CONF.initted then
         return false
     end
-    self.metric_connections:set(value, {self.CONF.app, state})
+    app = app or self.CONF.app
+    self.metric_connections:set(value, {app, state})
     return true
 end
 
