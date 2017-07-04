@@ -19,7 +19,8 @@ _M.CONF = {
     },
     log_method = {},
     buckets = {},
-    merge_path = false
+    merge_path = false,
+    debug = false
 }
 
 
@@ -93,11 +94,18 @@ function _M:init(user_config)
                 return nil, '"merge_path" must be a string'
             end
             self.CONF.merge_path = v
+        elseif k == "debug" then
+            if type(v) ~= "boolean" then
+                return nil, '"debug" must be a boolean'
+            end
+            self.CONF.debug = v
         end
     end
 
-    local config = ngx.shared.prometheus_metrics
-    config:flush_all()
+    if self.CONF.debug == false then
+        local config = ngx.shared.prometheus_metrics
+        config:flush_all()
+    end
 
     local prometheus = require("prometheus.prometheus").init("prometheus_metrics")
 
