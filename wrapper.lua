@@ -1,6 +1,6 @@
 -- Copyright (C) by Jiang Yang (jiangyang-pd@360.cn)
 
-local _M = { _VERSION = "1.1.3" }
+local _M = { _VERSION = "1.1.4" }
 
 local find = string.find
 local sub = string.sub
@@ -321,12 +321,16 @@ function _M:isLogUri(request_uri, monitor_key)
             if empty(uriConf["params"]) then
                 return uriConf["uri"]
             else
+                local ret = true
                 for _, param in ipairs(uriConf["params"]) do
                     if not inTable(param, request_params) then
-                        return false
+                        ret = false
+                        break
                     end
                 end
-                return uriConf["uri"]
+                if ret then
+                    return uriConf["uri"]
+                end
             end
         end
     end
